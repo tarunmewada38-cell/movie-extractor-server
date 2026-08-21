@@ -1,12 +1,12 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio'); // HTML parsing ke liye zaroori library
+const cheerio = require('cheerio');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Universal Regex Engine to filter .m3u8 and .mp4 links from HTML/responses
+// Universal Regex Engine to filter .m3u8 and .mp4 links
 function extractMediaLinks(htmlContent) {
     const m3u8Regex = /https?:\/\/[^\s"'<>]+?\.m3u8[^\s"'<>*/]*/g;
     const mp4Regex = /https?:\/\/[^\s"'<>]+?\.mp4[^\s"'<>*/]*/g;
@@ -20,61 +20,106 @@ function extractMediaLinks(htmlContent) {
     };
 }
 
-// Example Scraper Route for Indian & Dubbed Content Indexers (Vegamovies / KatmovieHD / Bolly4u style)
+// Helper to fetch Movie/TV Show title from TMDb using tmdbId
+async function getTmdbTitle(tmdbId, type) {
+    try {
+        const apiKey = "c3397946927d6d52674e2a8684eb4300";
+        const mediaType = type === 'tv' ? 'tv' : 'movie';
+        const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${apiKey}`;
+        const response = await axios.get(url);
+        return response.data.title || response.data.name || "";
+    } catch (err) {
+        console.error("TMDb Title Fetch Error:", err.message);
+        return "";
+    }
+}
+
+// Scraper function targeting user's exact preferred regional & indexer sites
+async function scrapeFromPreferredSites(movieTitle) {
+    // Sirf aur sirf wahi sites jo tune batayi hain (Fallback / Priority List)
+    const preferredSites = [
+        "https://netnaija.com",
+        "https://vegamovies.pages.dev",
+        "https://katmoviehd.eu",
+        "https://bolly4u.org",
+        "https://hdhub4u.tv"
+    ];
+
+    for (let site of preferredSites) {
+        try {
+            console.log(`Searching on indexer: ${site}`);
+            const searchUrl = `${site}/?s=${encodeURIComponent(movieTitle)}`;
+            const { data } = await axios.get(searchUrl, { 
+                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+                timeout: 5000 
+            });
+            
+            const $ = cheerio.load(data);
+            const firstResult = $('a').filter((i, el) => {
+                const href = $(el).attr('href') || '';
+                return href.includes('movie') || href.includes('post') || href.length > 20;
+            }).first().attr('href');
+
+            if (firstResult) {
+                // Ensure absolute URL if relative path is returned
+                const targetPostUrl = firstResult.startsWith('http') ? firstResult : `${site}${firstResult}`;
+                const { data: postData } = await axios.get(targetPostUrl, { 
+                    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+                    timeout: 5000 
+                });
+
+                const mediaLinks = extractMediaLinks(postData);
+                if (mediaLinks.m3u8.length > 0) return mediaLinks.m3u8[0];
+                if (mediaLinks.mp4.length > 0) return mediaLinks.mp4[0];
+            }
+        } catch (err) {
+            console.log(`Failed on ${site}: ${err.message}`);
+            continue; // Fallback to next preferred site in the list
+        }
+    }
+    return null;
+}
+
 app.get('/api/extract', async (req, res) => {
-    const { tmdbId, type, query } = req.query; // tmdbId ya movie ka naam pass kar sakte hain
+    const { tmdbId, type } = req.query;
     
     try {
-        console.log(`Searching streams for TMDB ID: ${tmdbId}, Type: ${type}`);
+        if (!tmdbId) {
+            return res.status(400).json({ success: false, message: "TMDB ID is required" });
+        }
 
-        // 1. Aap yahan TMDb API se movie ka title fetch kar sakte hain (agar tmdbId diya hai)
-        // Ya direct query search implement kar sakte hain in sites par.
-        
-        // Example target site search URL (Vegamovies / Bolly4u type indexers)
-        // Note: In sites ke domain frequently change hote hain, isliye active domain use karein.
-        const searchDomain = "https://vegamovies.pages.dev"; // ya koi active domain
-        
-        // Dummy implementation of search & scrape flow:
-        // const searchResponse = await axios.get(`${searchDomain}/search?q=${encodeURIComponent(movieTitle)}`, {
-        //     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-        // });
+        const mediaTitle = await getTmdbTitle(tmdbId, type);
+        console.log(`Resolved Title for Indexers: ${mediaTitle}`);
 
-        // 2. HTML content ko cheerio mein load karke direct links nikalna:
-        // const $ = cheerio.load(searchResponse.data);
-        // const postLink = $('your-target-selector').attr('href');
+        if (!mediaTitle) {
+            return res.json({ success: false, message: "Could not resolve title from TMDb." });
+        }
 
-        // 3. Post page par jaakar universal regex se .m3u8 ya .mp4 filter karna:
-        // const postResponse = await axios.get(postLink);
-        // const mediaLinks = extractMediaLinks(postResponse.data);
+        // Searching across user's exact preferred sites with complete fallback
+        const directStreamUrl = await scrapeFromPreferredSites(mediaTitle);
 
-        // Filhal ke liye agar regex engine ko test karna hai ya direct link bhejwana hai:
-        // Aap apne custom indexer domains ka array yahan loop karke scrape karwa sakte hain.
-
-        // Test ke taur par agar koi valid link mil jata hai:
-        const finalStreamUrl = ""; // Yahan scraped m3u8/mp4 link aayega
-
-        if (finalStreamUrl) {
-            res.json({
+        if (directStreamUrl) {
+            return res.json({
                 success: true,
-                streamUrl: finalStreamUrl,
+                streamUrl: directStreamUrl,
                 headers: {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                    "Referer": searchDomain
+                    "Referer": "https://google.com"
                 }
             });
         } else {
-            res.json({
+            return res.json({
                 success: false,
                 message: "No direct stream link found from regional indexers. Try another source."
             });
         }
 
     } catch (err) {
-        console.error("Scraping Error:", err.message);
+        console.error("Extraction Error:", err.message);
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Indexer & Scraper Server is running on port ${PORT}`);
+    console.log(`Strict Regional Indexer Server running on port ${PORT}`);
 });
