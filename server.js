@@ -6,7 +6,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Universal Regex Engine to filter .m3u8 and .mp4 links
 function extractMediaLinks(htmlContent) {
     const m3u8Regex = /https?:\/\/[^\s"'<>]+?\.m3u8[^\s"'<>*/]*/g;
     const mp4Regex = /https?:\/\/[^\s"'<>]+?\.mp4[^\s"'<>*/]*/g;
@@ -20,23 +19,27 @@ function extractMediaLinks(htmlContent) {
     };
 }
 
-// Helper to fetch Movie/TV Show title from TMDb using tmdbId
+// Fixed & Robust TMDb Title Fetcher
 async function getTmdbTitle(tmdbId, type) {
-    try {
-        const apiKey = "c3397946927d6d52674e2a8684eb4300";
-        const mediaType = type === 'tv' ? 'tv' : 'movie';
-        const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${apiKey}`;
-        const response = await axios.get(url);
-        return response.data.title || response.data.name || "";
-    } catch (err) {
-        console.error("TMDb Title Fetch Error:", err.message);
-        return "";
+    const apiKey = "c3397946927d6d52674e2a8684eb4300";
+    const mediaTypes = [type, 'movie', 'tv']; // Try requested type first, then fallback
+    
+    for (let mType of mediaTypes) {
+        if (!mType) continue;
+        try {
+            const url = `https://api.themoviedb.org/3/${mType}/${tmdbId}?api_key=${apiKey}`;
+            const response = await axios.get(url, { timeout: 4000 });
+            if (response.data && (response.data.title || response.data.name)) {
+                return response.data.title || response.data.name;
+            }
+        } catch (err) {
+            continue;
+        }
     }
+    return "";
 }
 
-// Scraper function targeting user's exact preferred regional & indexer sites
 async function scrapeFromPreferredSites(movieTitle) {
-    // Sirf aur sirf wahi sites jo tune batayi hain (Fallback / Priority List)
     const preferredSites = [
         "https://netnaija.com",
         "https://vegamovies.pages.dev",
@@ -47,11 +50,10 @@ async function scrapeFromPreferredSites(movieTitle) {
 
     for (let site of preferredSites) {
         try {
-            console.log(`Searching on indexer: ${site}`);
             const searchUrl = `${site}/?s=${encodeURIComponent(movieTitle)}`;
             const { data } = await axios.get(searchUrl, { 
                 headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                timeout: 5000 
+                timeout: 4000 
             });
             
             const $ = cheerio.load(data);
@@ -61,11 +63,10 @@ async function scrapeFromPreferredSites(movieTitle) {
             }).first().attr('href');
 
             if (firstResult) {
-                // Ensure absolute URL if relative path is returned
                 const targetPostUrl = firstResult.startsWith('http') ? firstResult : `${site}${firstResult}`;
                 const { data: postData } = await axios.get(targetPostUrl, { 
                     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                    timeout: 5000 
+                    timeout: 4000 
                 });
 
                 const mediaLinks = extractMediaLinks(postData);
@@ -73,29 +74,32 @@ async function scrapeFromPreferredSites(movieTitle) {
                 if (mediaLinks.mp4.length > 0) return mediaLinks.mp4[0];
             }
         } catch (err) {
-            console.log(`Failed on ${site}: ${err.message}`);
-            continue; // Fallback to next preferred site in the list
+            continue;
         }
     }
     return null;
 }
 
 app.get('/api/extract', async (req, res) => {
-    const { tmdbId, type } = req.query;
+    const { tmdbId, type, query } = req.query;
     
     try {
-        if (!tmdbId) {
-            return res.status(400).json({ success: false, message: "TMDB ID is required" });
+        if (!tmdbId && !query) {
+            return res.status(400).json({ success: false, message: "TMDB ID or Query is required" });
         }
 
-        const mediaTitle = await getTmdbTitle(tmdbId, type);
-        console.log(`Resolved Title for Indexers: ${mediaTitle}`);
+        // Agar query direct app se aa rahi hai toh wo use karo, nahi toh TMDb se fetch karo
+        let mediaTitle = query;
+        if (!mediaTitle && tmdbId) {
+            mediaTitle = await getTmdbTitle(tmdbId, type);
+        }
+
+        console.log(`Final Search Title: ${mediaTitle}`);
 
         if (!mediaTitle) {
             return res.json({ success: false, message: "Could not resolve title from TMDb." });
         }
 
-        // Searching across user's exact preferred sites with complete fallback
         const directStreamUrl = await scrapeFromPreferredSites(mediaTitle);
 
         if (directStreamUrl) {
@@ -121,5 +125,5 @@ app.get('/api/extract', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Strict Regional Indexer Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
