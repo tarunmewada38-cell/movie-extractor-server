@@ -19,16 +19,37 @@ function extractMediaLinks(htmlContent) {
     };
 }
 
+async function getTmdbTitle(tmdbId, type) {
+    const apiKey = "c3397946927d6d52674e2a8684eb4300";
+    try {
+        const url = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${apiKey}`;
+        const response = await axios.get(url, { timeout: 3000 });
+        if (response.data && (response.data.title || response.data.name)) {
+            return response.data.title || response.data.name;
+        }
+    } catch (err) {
+        // Agar TMDb fail ho jaye, toh generic fallback search use karenge
+    }
+    return null;
+}
+
 app.get('/api/extract', async (req, res) => {
-    // Ab server direct query (title) lega, TMDb API ki zaroorat hi nahi!
-    const { query } = req.query;
+    const { tmdbId, type, query } = req.query;
     
     try {
-        if (!query) {
-            return res.status(400).json({ success: false, message: "Query parameter is required" });
+        let mediaTitle = query;
+
+        // Agar app ne query nahi bheji, toh TMDb se try karenge
+        if (!mediaTitle && tmdbId) {
+            mediaTitle = await getTmdbTitle(tmdbId, type || 'movie');
         }
 
-        console.log(`Searching directly for query: ${query}`);
+        // Agar fir bhi title na mile, toh fallback ke tor par tmdbId ko hi query bana denge taaki search ruk na sake
+        if (!mediaTitle) {
+            mediaTitle = tmdbId; 
+        }
+
+        console.log(`Searching on preferred sites for query: ${mediaTitle}`);
 
         const preferredSites = [
             "https://netnaija.com",
@@ -40,10 +61,10 @@ app.get('/api/extract', async (req, res) => {
 
         for (let site of preferredSites) {
             try {
-                const searchUrl = `${site}/?s=${encodeURIComponent(query)}`;
+                const searchUrl = `${site}/?s=${encodeURIComponent(mediaTitle)}`;
                 const { data } = await axios.get(searchUrl, { 
                     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                    timeout: 5000 
+                    timeout: 4000 
                 });
                 
                 const $ = cheerio.load(data);
@@ -56,7 +77,7 @@ app.get('/api/extract', async (req, res) => {
                     const targetPostUrl = firstResult.startsWith('http') ? firstResult : `${site}${firstResult}`;
                     const { data: postData } = await axios.get(targetPostUrl, { 
                         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                        timeout: 5000 
+                        timeout: 4000 
                     });
 
                     const mediaLinks = extractMediaLinks(postData);
