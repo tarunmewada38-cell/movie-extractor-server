@@ -6,7 +6,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Helper to extract media links from post page
 function extractMediaLinks(htmlContent) {
     const m3u8Regex = /https?:\/\/[^\s"'<>]+?\.m3u8[^\s"'<>*/]*/g;
     const mp4Regex = /https?:\/\/[^\s"'<>]+?\.mp4[^\s"'<>*/]*/g;
@@ -20,42 +19,17 @@ function extractMediaLinks(htmlContent) {
     };
 }
 
-// TMDb Title Fetcher
-async function getTmdbTitle(tmdbId, type) {
-    const apiKey = "c3397946927d6d52674e2a8684eb4300";
-    const mediaTypes = [type, 'movie', 'tv'];
-    
-    for (let mType of mediaTypes) {
-        if (!mType) continue;
-        try {
-            const url = `https://api.themoviedb.org/3/${mType}/${tmdbId}?api_key=${apiKey}`;
-            const response = await axios.get(url, { timeout: 4000 });
-            if (response.data && (response.data.title || response.data.name)) {
-                return response.data.title || response.data.name;
-            }
-        } catch (err) {
-            continue;
-        }
-    }
-    return null;
-}
-
 app.get('/api/extract', async (req, res) => {
-    const { tmdbId, type } = req.query;
+    // Ab server direct query (title) lega, TMDb API ki zaroorat hi nahi!
+    const { query } = req.query;
     
     try {
-        if (!tmdbId) {
-            return res.status(400).json({ success: false, message: "TMDB ID is required" });
+        if (!query) {
+            return res.status(400).json({ success: false, message: "Query parameter is required" });
         }
 
-        const mediaTitle = await getTmdbTitle(tmdbId, type);
-        console.log(`Searching for title: ${mediaTitle}`);
+        console.log(`Searching directly for query: ${query}`);
 
-        if (!mediaTitle) {
-            return res.json({ success: false, message: "Could not resolve title from TMDb." });
-        }
-
-        // All 5 Preferred Sites
         const preferredSites = [
             "https://netnaija.com",
             "https://vegamovies.pages.dev",
@@ -66,7 +40,7 @@ app.get('/api/extract', async (req, res) => {
 
         for (let site of preferredSites) {
             try {
-                const searchUrl = `${site}/?s=${encodeURIComponent(mediaTitle)}`;
+                const searchUrl = `${site}/?s=${encodeURIComponent(query)}`;
                 const { data } = await axios.get(searchUrl, { 
                     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
                     timeout: 5000 
@@ -94,7 +68,7 @@ app.get('/api/extract', async (req, res) => {
                     }
                 }
             } catch (err) {
-                continue; // Try next site if one fails or times out
+                continue; 
             }
         }
 
