@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Universal Regex Engine to filter direct media links
+// Helper to extract media links from post page
 function extractMediaLinks(htmlContent) {
     const m3u8Regex = /https?:\/\/[^\s"'<>]+?\.m3u8[^\s"'<>*/]*/g;
     const mp4Regex = /https?:\/\/[^\s"'<>]+?\.mp4[^\s"'<>*/]*/g;
@@ -20,6 +20,7 @@ function extractMediaLinks(htmlContent) {
     };
 }
 
+// TMDb Title Fetcher
 async function getTmdbTitle(tmdbId, type) {
     const apiKey = "c3397946927d6d52674e2a8684eb4300";
     const mediaTypes = [type, 'movie', 'tv'];
@@ -28,7 +29,7 @@ async function getTmdbTitle(tmdbId, type) {
         if (!mType) continue;
         try {
             const url = `https://api.themoviedb.org/3/${mType}/${tmdbId}?api_key=${apiKey}`;
-            const response = await axios.get(url, { timeout: 3000 });
+            const response = await axios.get(url, { timeout: 4000 });
             if (response.data && (response.data.title || response.data.name)) {
                 return response.data.title || response.data.name;
             }
@@ -36,7 +37,7 @@ async function getTmdbTitle(tmdbId, type) {
             continue;
         }
     }
-    return "";
+    return null;
 }
 
 app.get('/api/extract', async (req, res) => {
@@ -48,13 +49,13 @@ app.get('/api/extract', async (req, res) => {
         }
 
         const mediaTitle = await getTmdbTitle(tmdbId, type);
-        console.log(`Searching strictly on regional sites for: ${mediaTitle}`);
+        console.log(`Searching for title: ${mediaTitle}`);
 
         if (!mediaTitle) {
             return res.json({ success: false, message: "Could not resolve title from TMDb." });
         }
 
-        // Strictly User Preferred Sites Only (No Third-Party / No Vidsrc)
+        // All 5 Preferred Sites
         const preferredSites = [
             "https://netnaija.com",
             "https://vegamovies.pages.dev",
@@ -68,7 +69,7 @@ app.get('/api/extract', async (req, res) => {
                 const searchUrl = `${site}/?s=${encodeURIComponent(mediaTitle)}`;
                 const { data } = await axios.get(searchUrl, { 
                     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                    timeout: 4000 
+                    timeout: 5000 
                 });
                 
                 const $ = cheerio.load(data);
@@ -81,7 +82,7 @@ app.get('/api/extract', async (req, res) => {
                     const targetPostUrl = firstResult.startsWith('http') ? firstResult : `${site}${firstResult}`;
                     const { data: postData } = await axios.get(targetPostUrl, { 
                         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                        timeout: 4000 
+                        timeout: 5000 
                     });
 
                     const mediaLinks = extractMediaLinks(postData);
@@ -93,14 +94,13 @@ app.get('/api/extract', async (req, res) => {
                     }
                 }
             } catch (err) {
-                continue; 
+                continue; // Try next site if one fails or times out
             }
         }
 
-        // Agar kisi bhi site par direct link nahi mila, toh saaf mana kar dega (No vidsrc fallback)
         return res.json({
             success: false,
-            message: "Direct link not found on Vegamovies, KatmovieHD, Bolly4u, HDHub4u or NetNaija."
+            message: "Stream link not found on preferred sites."
         });
 
     } catch (err) {
