@@ -43,7 +43,8 @@ async function searchAndExtract(site, query) {
         let streamUrl = null;
         $$('a').each((i, el) => {
             const href = $$(el).attr('href');
-            if (href && (href.includes('.m3u8') || href.includes('.mp4') || href.includes('pixeldrain') || href.includes('hubcloud') || href.includes('filepress') || href.includes('vidsrc'))) {
+            // Removed vidsrc from here to strictly focus on direct video/storage links
+            if (href && (href.includes('.m3u8') || href.includes('.mp4') || href.includes('pixeldrain') || href.includes('hubcloud') || href.includes('filepress'))) {
                 streamUrl = href;
                 return false;
             }
@@ -65,7 +66,7 @@ app.get('/api/extract', async (req, res) => {
 
     const searchQuery = query || tmdbId;
 
-    // List of active backup domains/sites
+    // List of active Hindi/South focused domains
     const preferredSites = [
         "https://vegamovies.ist",
         "https://hdhub4u.wf",
@@ -85,21 +86,12 @@ app.get('/api/extract', async (req, res) => {
         }
     }
 
-    // Fallback: If scraping fails, use a public embed provider mapping via TMDb ID for instant playback
-    if (tmdbId) {
-        const fallbackEmbed = type === 'tv' 
-            ? `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=1&episode=1`
-            : `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`;
-        
-        return res.json({
-            success: true,
-            streamUrl: fallbackEmbed,
-            headers: headers,
-            message: null
-        });
-    }
-
-    return res.json({ success: false, streamUrl: null, message: "Stream link not found on preferred sites." });
+    // Fallback: If direct scraping fails, return failure instead of vidsrc embeds
+    return res.json({ 
+        success: false, 
+        streamUrl: null, 
+        message: "Stream link not found on preferred Hindi/South sources." 
+    });
 });
 
 app.listen(PORT, () => {
