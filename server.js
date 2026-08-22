@@ -26,12 +26,11 @@ async function searchAndExtract(site, query) {
         const cleanQuery = cleanTitle(query);
         if (!cleanQuery) return null;
 
-        // General search fallback URL
         const searchUrl = `${site}/?s=${cleanQuery}`;
         const { data: searchData } = await axios.get(searchUrl, { headers, timeout: 7000 });
         const $ = cheerio.load(searchData);
         
-        let postUrl = $('h2.title a, .item a, .result-item a, article a, .movies-list-culmns a').first().attr('href');
+        let postUrl = $('h2.title a, .item a, .result-item a, article a, .movies-list-culmns a, .post-title a').first().attr('href');
         if (!postUrl) return null;
 
         if (!postUrl.startsWith('http')) {
@@ -44,7 +43,7 @@ async function searchAndExtract(site, query) {
         let streamUrl = null;
         $$('a').each((i, el) => {
             const href = $$(el).attr('href');
-            if (href && (href.includes('.m3u8') || href.includes('.mp4') || href.includes('pixeldrain') || href.includes('hubcloud') || href.includes('filepress'))) {
+            if (href && (href.includes('.m3u8') || href.includes('.mp4') || href.includes('pixeldrain') || href.includes('hubcloud') || href.includes('filepress') || href.includes('vidsrc'))) {
                 streamUrl = href;
                 return false;
             }
@@ -64,19 +63,40 @@ app.get('/api/extract', async (req, res) => {
         return res.status(400).json({ success: false, streamUrl: null, message: "Query or tmdbId required" });
     }
 
+    const searchQuery = query || tmdbId;
+
+    // List of active backup domains/sites
     const preferredSites = [
         "https://vegamovies.ist",
         "https://hdhub4u.wf",
-        "https://katmoviehd.nl"
+        "https://katmoviehd.nl",
+        "https://luxangi.com"
     ];
-
-    const searchQuery = query || tmdbId;
 
     for (let site of preferredSites) {
         const foundLink = await searchAndExtract(site, searchQuery);
         if (foundLink) {
-            return res.json({ success: true, streamUrl: foundLink, headers: { "User-Agent": headers["User-Agent"] }, message: null });
+            return res.json({ 
+                success: true, 
+                streamUrl: foundLink, 
+                headers: { "User-Agent": headers["User-Agent"] }, 
+                message: null 
+            });
         }
+    }
+
+    // Fallback: If scraping fails, use a public embed provider mapping via TMDb ID for instant playback
+    if (tmdbId) {
+        const fallbackEmbed = type === 'tv' 
+            ? `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=1&episode=1`
+            : `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`;
+        
+        return res.json({
+            success: true,
+            streamUrl: fallbackEmbed,
+            headers: headers,
+            message: null
+        });
     }
 
     return res.json({ success: false, streamUrl: null, message: "Stream link not found on preferred sites." });
