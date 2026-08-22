@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Helper to extract media links (.m3u8 or .mp4) from HTML content
 function extractMediaLinks(htmlContent) {
     const m3u8Regex = /https?:\/\/[^\s"'<>]+?\.m3u8[^\s"'<>*/]*/g;
     const mp4Regex = /https?:\/\/[^\s"'<>]+?\.mp4[^\s"'<>*/]*/g;
@@ -19,6 +20,7 @@ function extractMediaLinks(htmlContent) {
     };
 }
 
+// Fallback TMDb Title Fetcher in case query is missing
 async function getTmdbTitle(tmdbId, type) {
     const apiKey = "c3397946927d6d52674e2a8684eb4300";
     try {
@@ -28,7 +30,7 @@ async function getTmdbTitle(tmdbId, type) {
             return response.data.title || response.data.name;
         }
     } catch (err) {
-        // Agar TMDb fail ho jaye, toh generic fallback search use karenge
+        // Fallback silently if TMDb fails
     }
     return null;
 }
@@ -44,7 +46,7 @@ app.get('/api/extract', async (req, res) => {
             mediaTitle = await getTmdbTitle(tmdbId, type || 'movie');
         }
 
-        // Agar fir bhi title na mile, toh fallback ke tor par tmdbId ko hi query bana denge taaki search ruk na sake
+        // Agar fir bhi title na mile, toh fallback ke tor par tmdbId use karenge
         if (!mediaTitle) {
             mediaTitle = tmdbId; 
         }
@@ -63,7 +65,7 @@ app.get('/api/extract', async (req, res) => {
             try {
                 const searchUrl = `${site}/?s=${encodeURIComponent(mediaTitle)}`;
                 const { data } = await axios.get(searchUrl, { 
-                    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+                    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
                     timeout: 4000 
                 });
                 
@@ -76,7 +78,7 @@ app.get('/api/extract', async (req, res) => {
                 if (firstResult) {
                     const targetPostUrl = firstResult.startsWith('http') ? firstResult : `${site}${firstResult}`;
                     const { data: postData } = await axios.get(targetPostUrl, { 
-                        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+                        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
                         timeout: 4000 
                     });
 
@@ -89,7 +91,7 @@ app.get('/api/extract', async (req, res) => {
                     }
                 }
             } catch (err) {
-                continue; 
+                continue; // Next site try karega agar ek fail ho jaye
             }
         }
 
