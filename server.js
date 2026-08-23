@@ -63,7 +63,7 @@ async function resolveStreamingLink(inputUrl) {
                 redirectCount++;
             } else {
                 console.log(`[Resolver] Final Streaming/Web Link Found: ${currentUrl}`);
-                if (currentUrl.includes('.m3u8') || currentUrl.includes('.mp4') || currentUrl.includes('sbcdn')) {
+                if (currentUrl.includes('.m3u8') || currentUrl.includes('.mp4') || currentUrl.includes('hakunaymatata')) {
                     return { success: true, finalUrl: currentUrl };
                 }
                 return { success: true, finalUrl: currentUrl, type: 'html_page' };
@@ -186,7 +186,7 @@ app.get('/api/resolve', async (req, res) => {
     return res.json(result);
 });
 
-// Video Proxy Endpoint with Safe Header Forwarding (Bypasses 403 / CORS)
+// Video Proxy Endpoint with Dynamic Origin/Referer (Bypasses 403 for CDN links like hakunaymatata)
 app.get('/proxy', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -194,12 +194,16 @@ app.get('/proxy', async (req, res) => {
     }
 
     try {
+        const parsedTargetUrl = new URL(videoUrl);
+        const dynamicOrigin = `${parsedTargetUrl.protocol}//${parsedTargetUrl.host}`;
+
         const response = await axios({
             method: 'get',
             url: videoUrl,
             headers: {
                 'User-Agent': USER_AGENT,
-                'Referer': 'https://www.google.com/',
+                'Referer': `${dynamicOrigin}/`,
+                'Origin': dynamicOrigin,
                 'Range': req.headers.range || 'bytes=0-'
             },
             responseType: 'stream',
