@@ -1,9 +1,15 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const https = require('https');
 
 const app = express();
 app.use(express.json());
+
+// Create an HTTPS agent that ignores self-signed / SSL certificate errors
+const httpsAgent = new https.Agent({  
+    rejectUnauthorized: false
+});
 
 // Advanced Browser-like Headers for TLS/Request Impersonation
 const getStealthHeaders = (targetUrl) => {
@@ -62,6 +68,7 @@ async function resolveStreamingLink(inputUrl) {
         while (redirectCount < maxRedirects) {
             const response = await axios.get(currentUrl, {
                 maxRedirects: 0,
+                httpsAgent: httpsAgent,
                 validateStatus: function (status) {
                     return status >= 200 && status < 400;
                 },
@@ -99,7 +106,7 @@ async function resolveStreamingLink(inputUrl) {
     }
 }
 
-// Updated Provider Search Function using MovieBox active indexers
+// Updated Provider Search Function with fast timeouts & SSL bypass
 async function searchAcrossProviders(query) {
     const providers = [
         `https://www.thenetnaija.net/search?t=${query}`,
@@ -115,7 +122,8 @@ async function searchAcrossProviders(query) {
             console.log(`Analysing from [${searchUrl}]`);
             const response = await axios.get(searchUrl, {
                 headers: getStealthHeaders(searchUrl),
-                timeout: 7000,
+                httpsAgent: httpsAgent,
+                timeout: 3000, // Reduced to 3 seconds for fast switching
                 validateStatus: function (status) {
                     return status >= 200 && status < 400;
                 }
@@ -145,7 +153,8 @@ async function searchAcrossProviders(query) {
                 console.log(`Deep scraping post: ${postLink}`);
                 const postResp = await axios.get(postLink, {
                     headers: getStealthHeaders(postLink),
-                    timeout: 7000,
+                    httpsAgent: httpsAgent,
+                    timeout: 3000,
                     validateStatus: function (status) {
                         return status >= 200 && status < 400;
                     }
@@ -222,6 +231,7 @@ app.get('/proxy', async (req, res) => {
         const response = await axios({
             method: 'get',
             url: videoUrl,
+            httpsAgent: httpsAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Referer': `${dynamicOrigin}/`,
@@ -253,23 +263,6 @@ app.get('/proxy', async (req, res) => {
             res.status(500).send("Failed to proxy video stream.");
         }
     }
-});
-
-// HLS Router endpoint
-app.get('/hls', (req, res) => {
-    const videoUrl = req.query.url;
-    if (!videoUrl) {
-        return res.status(400).json({ success: false, error: "Video URL is required" });
-    }
-
-    const host = req.get('host');
-    const protocol = req.protocol;
-    const proxyStreamUrl = `${protocol}://${host}/proxy?url=${encodeURIComponent(videoUrl)}`;
-
-    return res.json({
-        success: true,
-        streamUrl: proxyStreamUrl
-    });
 });
 
 const PORT = process.env.PORT || 3000;
