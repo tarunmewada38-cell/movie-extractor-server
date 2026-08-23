@@ -121,7 +121,7 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Video Proxy Endpoint to bypass 403 Forbidden on Android ExoPlayer
+// Video Proxy Endpoint with Safe Header Forwarding
 app.get('/proxy', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -138,10 +138,24 @@ app.get('/proxy', async (req, res) => {
                 'Range': req.headers.range || 'bytes=0-'
             },
             responseType: 'stream',
-            timeout: 20000
+            timeout: 30000
         });
 
-        res.writeHead(response.status, response.headers);
+        // Safe header copying to prevent crash on restricted properties
+        const safeHeaders = {};
+        const passHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified'];
+        
+        Object.keys(response.headers).forEach(key => {
+            if (passHeaders.includes(key.toLowerCase())) {
+                safeHeaders[key] = response.headers[key];
+            }
+        });
+
+        res.writeHead(response.status, {
+            ...safeHeaders,
+            'Access-Control-Allow-Origin': '*'
+        });
+        
         response.data.pipe(res);
     } catch (error) {
         console.error("Proxy Error:", error.message);
@@ -151,14 +165,13 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-// Optimized /hls endpoint: Direct Proxy Stream routing (No heavy FFmpeg lag)
+// Optimized /hls endpoint: Direct Proxy Stream routing
 app.get('/hls', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
         return res.status(400).json({ success: false, error: "Video URL is required" });
     }
 
-    // Direct proxy stream link generate kar ke bhej raha hai taaki ExoPlayer bina error ke seedha chala sake
     const host = req.get('host');
     const protocol = req.protocol;
     const proxyStreamUrl = `${protocol}://${host}/proxy?url=${encodeURIComponent(videoUrl)}`;
