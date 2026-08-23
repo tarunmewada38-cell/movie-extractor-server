@@ -1,7 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs');
 
@@ -20,7 +19,7 @@ function cleanTitle(title) {
         .replace(/\s+/g, '+');
 }
 
-// 1. NetNaija Scraper Provider (Updated with multi-selector fallback)
+// 1. NetNaija Scraper Provider
 async function searchNetNaija(query) {
     try {
         const searchUrl = `https://www.thenetnaija.net/search?t=${query}`;
@@ -53,7 +52,7 @@ async function searchNetNaija(query) {
     }
 }
 
-// 2. FzMovies Scraper Provider (Updated with multi-selector fallback)
+// 2. FzMovies Scraper Provider
 async function searchFzMovies(query) {
     try {
         const searchUrl = `https://fzmovies.net/search.aspx?q=${query}`;
@@ -87,7 +86,7 @@ async function searchFzMovies(query) {
     }
 }
 
-// Main Extraction Endpoint with Automatic Fallback
+// Main Extraction Endpoint
 app.get('/extract', async (req, res) => {
     const rawQuery = req.query.q;
     if (!rawQuery) {
@@ -122,7 +121,7 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Video Proxy Endpoint to bypass 403 Forbidden / Hotlinking protection on Android ExoPlayer
+// Video Proxy Endpoint to bypass 403 Forbidden on Android ExoPlayer
 app.get('/proxy', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -152,46 +151,23 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-// HLS Conversion Endpoint (Using fluent-ffmpeg)
+// Optimized /hls endpoint: Direct Proxy Stream routing (No heavy FFmpeg lag)
 app.get('/hls', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
         return res.status(400).json({ success: false, error: "Video URL is required" });
     }
 
-    const outputDir = path.join(__dirname, 'hls_output');
-    if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-    }
+    // Direct proxy stream link generate kar ke bhej raha hai taaki ExoPlayer bina error ke seedha chala sake
+    const host = req.get('host');
+    const protocol = req.protocol;
+    const proxyStreamUrl = `${protocol}://${host}/proxy?url=${encodeURIComponent(videoUrl)}`;
 
-    const outputPath = path.join(outputDir, 'playlist.m3u8');
-
-    ffmpeg(videoUrl)
-        .outputOptions([
-            '-profile:v baseline',
-            '-level 3.0',
-            '-start_number 0',
-            '-hls_time 10',
-            '-hls_list_size 0',
-            '-f hls'
-        ])
-        .output(outputPath)
-        .on('end', () => {
-            console.log('HLS conversion finished successfully');
-            res.json({
-                success: true,
-                hlsUrl: `${req.protocol}://${req.get('host')}/hls_output/playlist.m3u8`
-            });
-        })
-        .on('error', (err) => {
-            console.error('FFmpeg Error:', err.message);
-            res.status(500).json({ success: false, error: err.message });
-        })
-        .run();
+    return res.json({
+        success: true,
+        streamUrl: proxyStreamUrl
+    });
 });
-
-// Serve HLS files statically so ExoPlayer can read chunks (.ts & .m3u8)
-app.use('/hls_output', express.static(path.join(__dirname, 'hls_output')));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
