@@ -5,7 +5,32 @@ const cheerio = require('cheerio');
 const app = express();
 app.use(express.json());
 
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+// Advanced Browser-like Headers for TLS/Request Impersonation (Bypasses basic Cloudflare blocks)
+const getStealthHeaders = (targetUrl) => {
+    let host = "www.google.com";
+    try {
+        const parsed = new URL(targetUrl);
+        host = parsed.host;
+    } catch (e) {}
+
+    return {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': `https://${host}/`
+    };
+};
 
 // Helper function to clean movie/TV titles for searching
 function cleanTitle(title) {
@@ -25,7 +50,7 @@ function extractVideoLinks(htmlContent) {
     return [...new Set(matches)];
 }
 
-// Universal Redirect & CDN Link Resolver (Movie Box rotating links/CDNs ke liye)
+// Universal Redirect & CDN Link Resolver
 async function resolveStreamingLink(inputUrl) {
     try {
         console.log(`[Resolver] Tracking link: ${inputUrl}`);
@@ -40,11 +65,7 @@ async function resolveStreamingLink(inputUrl) {
                 validateStatus: function (status) {
                     return status >= 200 && status < 400;
                 },
-                headers: {
-                    'User-Agent': USER_AGENT,
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Referer': 'https://www.google.com/'
-                }
+                headers: getStealthHeaders(currentUrl)
             });
 
             if (response.status >= 300 && response.status < 400 && response.headers.location) {
@@ -78,7 +99,7 @@ async function resolveStreamingLink(inputUrl) {
     }
 }
 
-// Universal Provider Search Function
+// Universal Provider Search Function with Stealth Headers
 async function searchAcrossProviders(query) {
     const providers = [
         `https://vegamovies.pages.dev/?s=${query}`,
@@ -99,8 +120,11 @@ async function searchAcrossProviders(query) {
         try {
             console.log(`Trying provider: ${searchUrl}`);
             const response = await axios.get(searchUrl, {
-                headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
-                timeout: 7000
+                headers: getStealthHeaders(searchUrl),
+                timeout: 7000,
+                validateStatus: function (status) {
+                    return status >= 200 && status < 400;
+                }
             });
 
             const html = response.data;
@@ -125,8 +149,11 @@ async function searchAcrossProviders(query) {
 
                 console.log(`Deep scraping post: ${postLink}`);
                 const postResp = await axios.get(postLink, {
-                    headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
-                    timeout: 7000
+                    headers: getStealthHeaders(postLink),
+                    timeout: 7000,
+                    validateStatus: function (status) {
+                        return status >= 200 && status < 400;
+                    }
                 });
 
                 const postLinks = extractVideoLinks(postResp.data);
@@ -161,7 +188,7 @@ app.get('/extract', async (req, res) => {
             success: true,
             streamUrl: streamUrl,
             headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 "Referer": "https://www.google.com/"
             }
         });
@@ -174,19 +201,19 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Naya API Route: Rotating links / CDNs ko trace aur resolve karne ke liye
+// Resolve API Route
 app.get('/api/resolve', async (req, res) => {
     const targetUrl = req.query.url;
     
     if (!targetUrl) {
-        return res.status(400).json({ success: false, error: 'URL parameter is missing' });
+        return res.400({ success: false, error: 'URL parameter is missing' });
     }
 
     const result = await resolveStreamingLink(targetUrl);
     return res.json(result);
 });
 
-// Video Proxy Endpoint with Dynamic Origin/Referer (Bypasses 403 for CDN links like hakunaymatata)
+// Video Proxy Endpoint
 app.get('/proxy', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -201,7 +228,7 @@ app.get('/proxy', async (req, res) => {
             method: 'get',
             url: videoUrl,
             headers: {
-                'User-Agent': USER_AGENT,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Referer': `${dynamicOrigin}/`,
                 'Origin': dynamicOrigin,
                 'Range': req.headers.range || 'bytes=0-'
@@ -233,7 +260,7 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-// Optimized HLS/Stream Router endpoint for Android App
+// HLS Router endpoint
 app.get('/hls', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
