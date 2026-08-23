@@ -201,12 +201,12 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Resolve API Route
+// Resolve API Route (FIXED HERE: res.status(400))
 app.get('/api/resolve', async (req, res) => {
     const targetUrl = req.query.url;
     
     if (!targetUrl) {
-        return res.400({ success: false, error: 'URL parameter is missing' });
+        return res.status(400).json({ success: false, error: 'URL parameter is missing' });
     }
 
     const result = await resolveStreamingLink(targetUrl);
