@@ -20,18 +20,67 @@ function cleanTitle(title) {
 // Universal Regex Engine to extract direct video links (.mp4, .m3u8, .mkv) from HTML text
 function extractVideoLinks(htmlContent) {
     if (!htmlContent) return [];
-    // Regex to match direct video streams or download files
     const regex = /https?:\/\/[^\s"'<>]+?\.(mp4|m3u8|mkv)(\?[^\s"'<>]+)?/gi;
     const matches = htmlContent.match(regex) || [];
-    // Remove duplicates
     return [...new Set(matches)];
+}
+
+// Universal Redirect & CDN Link Resolver (Movie Box rotating links/CDNs ke liye)
+async function resolveStreamingLink(inputUrl) {
+    try {
+        console.log(`[Resolver] Tracking link: ${inputUrl}`);
+        
+        let currentUrl = inputUrl;
+        let maxRedirects = 10;
+        let redirectCount = 0;
+
+        while (redirectCount < maxRedirects) {
+            const response = await axios.get(currentUrl, {
+                maxRedirects: 0,
+                validateStatus: function (status) {
+                    return status >= 200 && status < 400;
+                },
+                headers: {
+                    'User-Agent': USER_AGENT,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Referer': 'https://www.google.com/'
+                }
+            });
+
+            if (response.status >= 300 && response.status < 400 && response.headers.location) {
+                let nextUrl = response.headers.location;
+                
+                if (nextUrl.startsWith('/')) {
+                    const parsedUrl = new URL(currentUrl);
+                    nextUrl = `${parsedUrl.protocol}//${parsedUrl.host}${nextUrl}`;
+                } else if (!nextUrl.startsWith('http')) {
+                    const parsedUrl = new URL(currentUrl);
+                    nextUrl = `${parsedUrl.origin}/${nextUrl}`;
+                }
+
+                console.log(`[Redirect #${redirectCount + 1}] -> ${nextUrl}`);
+                currentUrl = nextUrl;
+                redirectCount++;
+            } else {
+                console.log(`[Resolver] Final Streaming/Web Link Found: ${currentUrl}`);
+                if (currentUrl.includes('.m3u8') || currentUrl.includes('.mp4') || currentUrl.includes('sbcdn')) {
+                    return { success: true, finalUrl: currentUrl };
+                }
+                return { success: true, finalUrl: currentUrl, type: 'html_page' };
+            }
+        }
+
+        return { success: false, error: 'Max redirects reached without finding final stream.' };
+
+    } catch (error) {
+        console.error('[Resolver Error]:', error.message);
+        return { success: false, error: error.message };
+    }
 }
 
 // Universal Provider Search Function
 async function searchAcrossProviders(query) {
-    // List of domains categorized for fallback
     const providers = [
-        // Hindi & South Focused
         `https://vegamovies.pages.dev/?s=${query}`,
         `https://katmoviehd.eu/?s=${query}`,
         `https://bolly4u.org/?s=${query}`,
@@ -40,10 +89,8 @@ async function searchAcrossProviders(query) {
         `https://moviesmod.org/?s=${query}`,
         `https://worldfree4u.store/?s=${query}`,
         `https://skymovieshd.life/?s=${query}`,
-        // Direct Web Scrapes / Mobile
         `https://fzmovies.net/search.aspx?q=${query}`,
         `https://www.thenetnaija.net/search?t=${query}`,
-        // Regional
         `https://tamilyogi.vip/?s=${query}`,
         `https://5movierulz.im/s/?q=${query}`
     ];
@@ -61,10 +108,9 @@ async function searchAcrossProviders(query) {
 
             if (foundLinks.length > 0) {
                 console.log(`Found direct link on ${searchUrl}: ${foundLinks[0]}`);
-                return foundLinks[0]; // Return the first valid video link found
+                return foundLinks[0];
             }
 
-            // If direct link not on search page, look for post/article links to deep scrape
             const $ = cheerio.load(html);
             let postLink = $('a.loop-item-title').attr('href') || 
                            $('h2 a').attr('href') || 
@@ -91,11 +137,11 @@ async function searchAcrossProviders(query) {
             }
         } catch (err) {
             console.log(`Failed on ${searchUrl}: ${err.message}`);
-            continue; // Try next provider
+            continue;
         }
     }
 
-    return null; // If all providers fail
+    return null;
 }
 
 // Main Extraction Endpoint
@@ -126,6 +172,18 @@ app.get('/extract', async (req, res) => {
             message: "No stream found across all indexers."
         });
     }
+});
+
+// Naya API Route: Rotating links / CDNs ko trace aur resolve karne ke liye
+app.get('/api/resolve', async (req, res) => {
+    const targetUrl = req.query.url;
+    
+    if (!targetUrl) {
+        return res.status(400).json({ success: false, error: 'URL parameter is missing' });
+    }
+
+    const result = await resolveStreamingLink(targetUrl);
+    return res.json(result);
 });
 
 // Video Proxy Endpoint with Safe Header Forwarding (Bypasses 403 / CORS)
