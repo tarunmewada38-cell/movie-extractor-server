@@ -5,7 +5,7 @@ const cheerio = require('cheerio');
 const app = express();
 app.use(express.json());
 
-// Advanced Browser-like Headers for TLS/Request Impersonation (Bypasses basic Cloudflare blocks)
+// Advanced Browser-like Headers for TLS/Request Impersonation
 const getStealthHeaders = (targetUrl) => {
     let host = "www.google.com";
     try {
@@ -84,7 +84,7 @@ async function resolveStreamingLink(inputUrl) {
                 redirectCount++;
             } else {
                 console.log(`[Resolver] Final Streaming/Web Link Found: ${currentUrl}`);
-                if (currentUrl.includes('.m3u8') || currentUrl.includes('.mp4') || currentUrl.includes('hakunaymatata')) {
+                if (currentUrl.includes('.m3u8') || currentUrl.includes('.mp4')) {
                     return { success: true, finalUrl: currentUrl };
                 }
                 return { success: true, finalUrl: currentUrl, type: 'html_page' };
@@ -99,26 +99,20 @@ async function resolveStreamingLink(inputUrl) {
     }
 }
 
-// Universal Provider Search Function with Stealth Headers
+// Updated Provider Search Function using MovieBox active indexers
 async function searchAcrossProviders(query) {
     const providers = [
-        `https://vegamovies.pages.dev/?s=${query}`,
-        `https://katmoviehd.eu/?s=${query}`,
-        `https://bolly4u.org/?s=${query}`,
-        `https://7starhd.run/?s=${query}`,
-        `https://hdhub4u.tv/?s=${query}`,
-        `https://moviesmod.org/?s=${query}`,
-        `https://worldfree4u.store/?s=${query}`,
-        `https://skymovieshd.life/?s=${query}`,
-        `https://fzmovies.net/search.aspx?q=${query}`,
         `https://www.thenetnaija.net/search?t=${query}`,
-        `https://tamilyogi.vip/?s=${query}`,
-        `https://5movierulz.im/s/?q=${query}`
+        `https://fzmovies.net/search.aspx?q=${query}`,
+        `https://1377x.to/search/${query}/1/`,
+        `https://123moviesfree.net/search/${query}`,
+        `https://downloads-anymovies.co/search?q=${query}`,
+        `https://eztvtorrent.co/search/${query}`
     ];
 
     for (const searchUrl of providers) {
         try {
-            console.log(`Trying provider: ${searchUrl}`);
+            console.log(`Analysing from [${searchUrl}]`);
             const response = await axios.get(searchUrl, {
                 headers: getStealthHeaders(searchUrl),
                 timeout: 7000,
@@ -136,9 +130,10 @@ async function searchAcrossProviders(query) {
             }
 
             const $ = cheerio.load(html);
-            let postLink = $('a.loop-item-title').attr('href') || 
+            let postLink = $('a.article-title').attr('href') || 
                            $('h2 a').attr('href') || 
                            $('.search-result a').attr('href') || 
+                           $('.detLink').attr('href') ||
                            $('a.moviename').attr('href');
 
             if (postLink) {
@@ -201,7 +196,7 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Resolve API Route (FIXED HERE: res.status(400))
+// Resolve API Route
 app.get('/api/resolve', async (req, res) => {
     const targetUrl = req.query.url;
     
