@@ -17,26 +17,33 @@ function cleanTitle(title) {
         .replace(/\s+/g, '+');
 }
 
-// 1. NetNaija Scraper Provider
+// 1. NetNaija Scraper Provider (Updated with multi-selector fallback)
 async function searchNetNaija(query) {
     try {
         const searchUrl = `https://www.thenetnaija.net/search?t=${query}`;
         const response = await axios.get(searchUrl, {
             headers: { 'User-Agent': USER_AGENT, 'Referer': 'https://www.thenetnaija.net/' },
-            timeout: 8000
+            timeout: 10000
         });
 
         const $ = cheerio.load(response.data);
-        const postLink = $('h3.loop-item-title a, .file-info a').attr('href');
+        // Multiple fallback selectors for post link
+        let postLink = $('h3.loop-item-title a').attr('href') || 
+                       $('.file-info a').attr('href') || 
+                       $('div.post-details a').attr('href');
+
         if (!postLink) return null;
 
         const postResp = await axios.get(postLink, {
             headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
-            timeout: 8000
+            timeout: 10000
         });
 
         const postDoc = cheerio.load(postResp.data);
-        const downloadBtn = postDoc('a.download-btn, a.btn-primary').attr('href');
+        let downloadBtn = postDoc('a.download-btn').attr('href') || 
+                          postDoc('a.btn-primary').attr('href') || 
+                          postDoc('a.download-link').attr('href');
+
         return downloadBtn || null;
     } catch (error) {
         console.error("NetNaija Error:", error.message);
@@ -44,27 +51,33 @@ async function searchNetNaija(query) {
     }
 }
 
-// 2. FzMovies Scraper Provider
+// 2. FzMovies Scraper Provider (Updated with multi-selector fallback)
 async function searchFzMovies(query) {
     try {
         const searchUrl = `https://fzmovies.net/search.aspx?q=${query}`;
         const response = await axios.get(searchUrl, {
             headers: { 'User-Agent': USER_AGENT, 'Referer': 'https://fzmovies.net/' },
-            timeout: 8000
+            timeout: 10000
         });
 
         const $ = cheerio.load(response.data);
-        const movieLink = $('a.moviename, .search-result a').attr('href');
+        let movieLink = $('a.moviename').attr('href') || 
+                        $('.search-result a').attr('href') || 
+                        $('table.datas a').attr('href');
+
         if (!movieLink) return null;
 
         const resolvedUrl = movieLink.startsWith('http') ? movieLink : `https://fzmovies.net/${movieLink}`;
         const detResp = await axios.get(resolvedUrl, {
             headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
-            timeout: 8000
+            timeout: 10000
         });
 
         const detDoc = cheerio.load(detResp.data);
-        const downloadLink = detDoc('a.downloadlink, a.download').attr('href');
+        let downloadLink = detDoc('a.downloadlink').attr('href') || 
+                           detDoc('a.download').attr('href') || 
+                           detDoc('a.download-btn').attr('href');
+
         return downloadLink || null;
     } catch (error) {
         console.error("FzMovies Error:", error.message);
@@ -82,7 +95,6 @@ app.get('/extract', async (req, res) => {
     const query = cleanTitle(rawQuery);
     console.log(`Searching stream for: ${rawQuery} (Cleaned: ${query})`);
 
-    // Fallback Chain: Try Provider 1 -> Provider 2 -> Fallback
     let streamUrl = await searchNetNaija(query);
 
     if (!streamUrl) {
@@ -100,12 +112,10 @@ app.get('/extract', async (req, res) => {
             }
         });
     } else {
-        // Ultimate Fallback Stream (agar kahin se bhi link na mile taaki app crash ya 403 na ho)
         return res.json({
-            success: true,
-            streamUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-            headers: {},
-            message: "No stream found on indexers, returning fallback video."
+            success: false,
+            streamUrl: "",
+            message: "No stream found on indexers."
         });
     }
 });
