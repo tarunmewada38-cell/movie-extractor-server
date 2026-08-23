@@ -1,6 +1,9 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const ffmpeg = require('fluent-ffmpeg');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json());
@@ -27,7 +30,6 @@ async function searchNetNaija(query) {
         });
 
         const $ = cheerio.load(response.data);
-        // Multiple fallback selectors for post link
         let postLink = $('h3.loop-item-title a').attr('href') || 
                        $('.file-info a').attr('href') || 
                        $('div.post-details a').attr('href');
@@ -119,6 +121,47 @@ app.get('/extract', async (req, res) => {
         });
     }
 });
+
+// HLS Conversion Endpoint (Using fluent-ffmpeg)
+app.get('/hls', (req, res) => {
+    const videoUrl = req.query.url;
+    if (!videoUrl) {
+        return res.status(400).json({ success: false, error: "Video URL is required" });
+    }
+
+    const outputDir = path.join(__dirname, 'hls_output');
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    const outputPath = path.join(outputDir, 'playlist.m3u8');
+
+    ffmpeg(videoUrl)
+        .outputOptions([
+            '-profile:v baseline',
+            '-level 3.0',
+            '-start_number 0',
+            '-hls_time 10',
+            '-hls_list_size 0',
+            '-f hls'
+        ])
+        .output(outputPath)
+        .on('end', () => {
+            console.log('HLS conversion finished successfully');
+            res.json({
+                success: true,
+                hlsUrl: `${req.protocol}://${req.get('host')}/hls_output/playlist.m3u8`
+            });
+        })
+        .on('error', (err) => {
+            console.error('FFmpeg Error:', err.message);
+            res.status(500).json({ success: false, error: err.message });
+        })
+        .run();
+});
+
+// Serve HLS files statically so ExoPlayer can read chunks (.ts & .m3u8)
+app.use('/hls_output', express.static(path.join(__dirname, 'hls_output')));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
