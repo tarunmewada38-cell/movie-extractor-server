@@ -122,6 +122,36 @@ app.get('/extract', async (req, res) => {
     }
 });
 
+// Video Proxy Endpoint to bypass 403 Forbidden / Hotlinking protection on Android ExoPlayer
+app.get('/proxy', async (req, res) => {
+    const videoUrl = req.query.url;
+    if (!videoUrl) {
+        return res.status(400).send("Video URL is required");
+    }
+
+    try {
+        const response = await axios({
+            method: 'get',
+            url: videoUrl,
+            headers: {
+                'User-Agent': USER_AGENT,
+                'Referer': 'https://www.thenetnaija.net/',
+                'Range': req.headers.range || 'bytes=0-'
+            },
+            responseType: 'stream',
+            timeout: 20000
+        });
+
+        res.writeHead(response.status, response.headers);
+        response.data.pipe(res);
+    } catch (error) {
+        console.error("Proxy Error:", error.message);
+        if (!res.headersSent) {
+            res.status(500).send("Failed to proxy video stream.");
+        }
+    }
+});
+
 // HLS Conversion Endpoint (Using fluent-ffmpeg)
 app.get('/hls', (req, res) => {
     const videoUrl = req.query.url;
