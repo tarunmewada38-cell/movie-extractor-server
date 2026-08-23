@@ -1,8 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const path = require('path');
-const fs = require('fs');
 
 const app = express();
 app.use(express.json());
@@ -19,71 +17,85 @@ function cleanTitle(title) {
         .replace(/\s+/g, '+');
 }
 
-// 1. NetNaija Scraper Provider
-async function searchNetNaija(query) {
-    try {
-        const searchUrl = `https://www.thenetnaija.net/search?t=${query}`;
-        const response = await axios.get(searchUrl, {
-            headers: { 'User-Agent': USER_AGENT, 'Referer': 'https://www.thenetnaija.net/' },
-            timeout: 10000
-        });
-
-        const $ = cheerio.load(response.data);
-        let postLink = $('h3.loop-item-title a').attr('href') || 
-                       $('.file-info a').attr('href') || 
-                       $('div.post-details a').attr('href');
-
-        if (!postLink) return null;
-
-        const postResp = await axios.get(postLink, {
-            headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
-            timeout: 10000
-        });
-
-        const postDoc = cheerio.load(postResp.data);
-        let downloadBtn = postDoc('a.download-btn').attr('href') || 
-                          postDoc('a.btn-primary').attr('href') || 
-                          postDoc('a.download-link').attr('href');
-
-        return downloadBtn || null;
-    } catch (error) {
-        console.error("NetNaija Error:", error.message);
-        return null;
-    }
+// Universal Regex Engine to extract direct video links (.mp4, .m3u8, .mkv) from HTML text
+function extractVideoLinks(htmlContent) {
+    if (!htmlContent) return [];
+    // Regex to match direct video streams or download files
+    const regex = /https?:\/\/[^\s"'<>]+?\.(mp4|m3u8|mkv)(\?[^\s"'<>]+)?/gi;
+    const matches = htmlContent.match(regex) || [];
+    // Remove duplicates
+    return [...new Set(matches)];
 }
 
-// 2. FzMovies Scraper Provider
-async function searchFzMovies(query) {
-    try {
-        const searchUrl = `https://fzmovies.net/search.aspx?q=${query}`;
-        const response = await axios.get(searchUrl, {
-            headers: { 'User-Agent': USER_AGENT, 'Referer': 'https://fzmovies.net/' },
-            timeout: 10000
-        });
+// Universal Provider Search Function
+async function searchAcrossProviders(query) {
+    // List of domains categorized for fallback
+    const providers = [
+        // Hindi & South Focused
+        `https://vegamovies.pages.dev/?s=${query}`,
+        `https://katmoviehd.eu/?s=${query}`,
+        `https://bolly4u.org/?s=${query}`,
+        `https://7starhd.run/?s=${query}`,
+        `https://hdhub4u.tv/?s=${query}`,
+        `https://moviesmod.org/?s=${query}`,
+        `https://worldfree4u.store/?s=${query}`,
+        `https://skymovieshd.life/?s=${query}`,
+        // Direct Web Scrapes / Mobile
+        `https://fzmovies.net/search.aspx?q=${query}`,
+        `https://www.thenetnaija.net/search?t=${query}`,
+        // Regional
+        `https://tamilyogi.vip/?s=${query}`,
+        `https://5movierulz.im/s/?q=${query}`
+    ];
 
-        const $ = cheerio.load(response.data);
-        let movieLink = $('a.moviename').attr('href') || 
-                        $('.search-result a').attr('href') || 
-                        $('table.datas a').attr('href');
+    for (const searchUrl of providers) {
+        try {
+            console.log(`Trying provider: ${searchUrl}`);
+            const response = await axios.get(searchUrl, {
+                headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
+                timeout: 7000
+            });
 
-        if (!movieLink) return null;
+            const html = response.data;
+            const foundLinks = extractVideoLinks(html);
 
-        const resolvedUrl = movieLink.startsWith('http') ? movieLink : `https://fzmovies.net/${movieLink}`;
-        const detResp = await axios.get(resolvedUrl, {
-            headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
-            timeout: 10000
-        });
+            if (foundLinks.length > 0) {
+                console.log(`Found direct link on ${searchUrl}: ${foundLinks[0]}`);
+                return foundLinks[0]; // Return the first valid video link found
+            }
 
-        const detDoc = cheerio.load(detResp.data);
-        let downloadLink = detDoc('a.downloadlink').attr('href') || 
-                           detDoc('a.download').attr('href') || 
-                           detDoc('a.download-btn').attr('href');
+            // If direct link not on search page, look for post/article links to deep scrape
+            const $ = cheerio.load(html);
+            let postLink = $('a.loop-item-title').attr('href') || 
+                           $('h2 a').attr('href') || 
+                           $('.search-result a').attr('href') || 
+                           $('a.moviename').attr('href');
 
-        return downloadLink || null;
-    } catch (error) {
-        console.error("FzMovies Error:", error.message);
-        return null;
+            if (postLink) {
+                if (!postLink.startsWith('http')) {
+                    const parsedUrl = new URL(searchUrl);
+                    postLink = `${parsedUrl.protocol}//${parsedUrl.host}${postLink}`;
+                }
+
+                console.log(`Deep scraping post: ${postLink}`);
+                const postResp = await axios.get(postLink, {
+                    headers: { 'User-Agent': USER_AGENT, 'Referer': searchUrl },
+                    timeout: 7000
+                });
+
+                const postLinks = extractVideoLinks(postResp.data);
+                if (postLinks.length > 0) {
+                    console.log(`Found deep video link: ${postLinks[0]}`);
+                    return postLinks[0];
+                }
+            }
+        } catch (err) {
+            console.log(`Failed on ${searchUrl}: ${err.message}`);
+            continue; // Try next provider
+        }
     }
+
+    return null; // If all providers fail
 }
 
 // Main Extraction Endpoint
@@ -94,14 +106,9 @@ app.get('/extract', async (req, res) => {
     }
 
     const query = cleanTitle(rawQuery);
-    console.log(`Searching stream for: ${rawQuery} (Cleaned: ${query})`);
+    console.log(`Universal Engine Searching for: ${rawQuery} (Cleaned: ${query})`);
 
-    let streamUrl = await searchNetNaija(query);
-
-    if (!streamUrl) {
-        console.log("NetNaija failed. Falling back to FzMovies...");
-        streamUrl = await searchFzMovies(query);
-    }
+    const streamUrl = await searchAcrossProviders(query);
 
     if (streamUrl) {
         return res.json({
@@ -116,12 +123,12 @@ app.get('/extract', async (req, res) => {
         return res.json({
             success: false,
             streamUrl: "",
-            message: "No stream found on indexers."
+            message: "No stream found across all indexers."
         });
     }
 });
 
-// Video Proxy Endpoint with Safe Header Forwarding
+// Video Proxy Endpoint with Safe Header Forwarding (Bypasses 403 / CORS)
 app.get('/proxy', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -134,14 +141,13 @@ app.get('/proxy', async (req, res) => {
             url: videoUrl,
             headers: {
                 'User-Agent': USER_AGENT,
-                'Referer': 'https://www.thenetnaija.net/',
+                'Referer': 'https://www.google.com/',
                 'Range': req.headers.range || 'bytes=0-'
             },
             responseType: 'stream',
             timeout: 30000
         });
 
-        // Safe header copying to prevent crash on restricted properties
         const safeHeaders = {};
         const passHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified'];
         
@@ -165,7 +171,7 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-// Optimized /hls endpoint: Direct Proxy Stream routing
+// Optimized HLS/Stream Router endpoint for Android App
 app.get('/hls', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -184,5 +190,5 @@ app.get('/hls', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Movie Extractor Server running on port ${PORT}`);
+    console.log(`MovieBox Ultimate Extractor Server running on port ${PORT}`);
 });
