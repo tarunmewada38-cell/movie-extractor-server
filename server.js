@@ -6,12 +6,11 @@ const https = require('https');
 const app = express();
 app.use(express.json());
 
-// Create an HTTPS agent that ignores self-signed / SSL certificate errors
 const httpsAgent = new https.Agent({  
     rejectUnauthorized: false
 });
 
-// Advanced Browser-like Headers for TLS/Request Impersonation
+// Advanced Stealth Headers simulating real Chrome browser on Windows
 const getStealthHeaders = (targetUrl) => {
     let host = "www.google.com";
     try {
@@ -20,25 +19,24 @@ const getStealthHeaders = (targetUrl) => {
     } catch (e) {}
 
     return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
-        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
         'Sec-Ch-Ua-Mobile': '?0',
         'Sec-Ch-Ua-Platform': '"Windows"',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Site': 'cross-site',
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1',
-        'Referer': `https://${host}/`
+        'Referer': `https://www.google.com/url?q=https%3A%2F%2F${host}%2F`
     };
 };
 
-// Helper function to clean movie/TV titles for searching
 function cleanTitle(title) {
     if (!title) return "";
     return title
@@ -48,7 +46,6 @@ function cleanTitle(title) {
         .replace(/\s+/g, '+');
 }
 
-// Universal Regex Engine to extract direct video links (.mp4, .m3u8, .mkv) from HTML text
 function extractVideoLinks(htmlContent) {
     if (!htmlContent) return [];
     const regex = /https?:\/\/[^\s"'<>]+?\.(mp4|m3u8|mkv)(\?[^\s"'<>]+)?/gi;
@@ -56,57 +53,6 @@ function extractVideoLinks(htmlContent) {
     return [...new Set(matches)];
 }
 
-// Universal Redirect & CDN Link Resolver
-async function resolveStreamingLink(inputUrl) {
-    try {
-        console.log(`[Resolver] Tracking link: ${inputUrl}`);
-        
-        let currentUrl = inputUrl;
-        let maxRedirects = 10;
-        let redirectCount = 0;
-
-        while (redirectCount < maxRedirects) {
-            const response = await axios.get(currentUrl, {
-                maxRedirects: 0,
-                httpsAgent: httpsAgent,
-                validateStatus: function (status) {
-                    return status >= 200 && status < 400;
-                },
-                headers: getStealthHeaders(currentUrl)
-            });
-
-            if (response.status >= 300 && response.status < 400 && response.headers.location) {
-                let nextUrl = response.headers.location;
-                
-                if (nextUrl.startsWith('/')) {
-                    const parsedUrl = new URL(currentUrl);
-                    nextUrl = `${parsedUrl.protocol}//${parsedUrl.host}${nextUrl}`;
-                } else if (!nextUrl.startsWith('http')) {
-                    const parsedUrl = new URL(currentUrl);
-                    nextUrl = `${parsedUrl.origin}/${nextUrl}`;
-                }
-
-                console.log(`[Redirect #${redirectCount + 1}] -> ${nextUrl}`);
-                currentUrl = nextUrl;
-                redirectCount++;
-            } else {
-                console.log(`[Resolver] Final Streaming/Web Link Found: ${currentUrl}`);
-                if (currentUrl.includes('.m3u8') || currentUrl.includes('.mp4')) {
-                    return { success: true, finalUrl: currentUrl };
-                }
-                return { success: true, finalUrl: currentUrl, type: 'html_page' };
-            }
-        }
-
-        return { success: false, error: 'Max redirects reached without finding final stream.' };
-
-    } catch (error) {
-        console.error('[Resolver Error]:', error.message);
-        return { success: false, error: error.message };
-    }
-}
-
-// Updated Provider Search Function with fast timeouts & SSL bypass
 async function searchAcrossProviders(query) {
     const providers = [
         `https://www.thenetnaija.net/search?t=${query}`,
@@ -123,11 +69,16 @@ async function searchAcrossProviders(query) {
             const response = await axios.get(searchUrl, {
                 headers: getStealthHeaders(searchUrl),
                 httpsAgent: httpsAgent,
-                timeout: 3000, // Reduced to 3 seconds for fast switching
+                timeout: 4000,
                 validateStatus: function (status) {
-                    return status >= 200 && status < 400;
+                    return status >= 200 && status < 500;
                 }
             });
+
+            if (response.status === 403 || response.status === 503) {
+                console.log(`Blocked (Cloudflare/Anti-Bot) on ${searchUrl}`);
+                continue;
+            }
 
             const html = response.data;
             const foundLinks = extractVideoLinks(html);
@@ -154,7 +105,7 @@ async function searchAcrossProviders(query) {
                 const postResp = await axios.get(postLink, {
                     headers: getStealthHeaders(postLink),
                     httpsAgent: httpsAgent,
-                    timeout: 3000,
+                    timeout: 4000,
                     validateStatus: function (status) {
                         return status >= 200 && status < 400;
                     }
@@ -175,7 +126,6 @@ async function searchAcrossProviders(query) {
     return null;
 }
 
-// Main Extraction Endpoint
 app.get('/extract', async (req, res) => {
     const rawQuery = req.query.q;
     if (!rawQuery) {
@@ -192,7 +142,7 @@ app.get('/extract', async (req, res) => {
             success: true,
             streamUrl: streamUrl,
             headers: {
-                "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
                 "Referer": "https://www.google.com/"
             }
         });
@@ -205,19 +155,6 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Resolve API Route
-app.get('/api/resolve', async (req, res) => {
-    const targetUrl = req.query.url;
-    
-    if (!targetUrl) {
-        return res.status(400).json({ success: false, error: 'URL parameter is missing' });
-    }
-
-    const result = await resolveStreamingLink(targetUrl);
-    return res.json(result);
-});
-
-// Video Proxy Endpoint
 app.get('/proxy', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -233,7 +170,7 @@ app.get('/proxy', async (req, res) => {
             url: videoUrl,
             httpsAgent: httpsAgent,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
                 'Referer': `${dynamicOrigin}/`,
                 'Origin': dynamicOrigin,
                 'Range': req.headers.range || 'bytes=0-'
