@@ -15,10 +15,10 @@ return res.status(400).json({ success: false, error: 'Query parameter "q" is req
 }
 let streams = [];
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-// 🚨 1. अनब्लॉकड बाईपास गेटवे - यह रेंडर के सर्वर को कभी ब्लॉक नहीं होने देगा
+// 1. पहला अनब्लॉकड बाईपास गेटवे (टाइमआउट बढ़ाकर 30 सेकंड किया)
 try {
 const proxyApiUrl = `https://workers.dev/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
-const response = await axios.get(proxyApiUrl, { headers: { 'User-Agent': userAgent }, timeout: 8000 });
+const response = await axios.get(proxyApiUrl, { headers: { 'User-Agent': userAgent }, timeout: 30000 });
 if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
 const movies = response.data.data.movies;
 for (const movie of movies) {
@@ -38,13 +38,13 @@ label: `YTS Direct ${torrent.quality}`
 }
 }
 } catch (e) {
-console.log("Proxy Gateway Engine Failed, trying fallback 2...");
+console.log("Proxy Gateway Engine Timeout/Failed, trying backup...");
 }
-// 🚨 2. बैकअप गेटवे (अगर ऊपर वाला काम न करे तो यह संभालेगा)
+// 2. बैकअप गेटवे (टाइमआउट बढ़ाकर 30 सेकंड किया)
 if (streams.length === 0) {
 try {
 const secondaryUrl = `https://yts-proxy.com/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
-const response = await axios.get(secondaryUrl, { headers: { 'User-Agent': userAgent }, timeout: 8000 });
+const response = await axios.get(secondaryUrl, { headers: { 'User-Agent': userAgent }, timeout: 30000 });
 if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
 const movies = response.data.data.movies;
 for (const movie of movies) {
@@ -64,7 +64,7 @@ label: `YTS Direct ${torrent.quality}`
 }
 }
 } catch (e) {
-console.log("Secondary Proxy Engine also failed: " + e.message);
+console.log("Secondary Proxy Engine also timed out: " + e.message);
 }
 }
 if (streams.length === 0) {
