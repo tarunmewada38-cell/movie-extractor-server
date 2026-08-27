@@ -15,10 +15,10 @@ return res.status(400).json({ success: false, error: 'Query parameter "q" is req
 }
 let streams = [];
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+// 🚨 1. पहले YTS के ऑफिशियल अल्टरनेटिव डोमेन (yts.lt) पर ट्राई करो जो सर्वर्स पर ब्लॉक नहीं होता
 try {
-// फिक्स्ड यूआरएल सिंटैक्स डॉलर साइन और प्रॉपर इनकोडिंग के साथ
-const ytsUrl = `https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
-const response = await axios.get(ytsUrl, { headers: { 'User-Agent': userAgent }, timeout: 8000 });
+const ytsAltUrl = `https://yts.lt/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
+const response = await axios.get(ytsAltUrl, { headers: { 'User-Agent': userAgent }, timeout: 6000 });
 if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
 const movies = response.data.data.movies;
 for (const movie of movies) {
@@ -30,7 +30,7 @@ url: magnetLink,
 magnet_url: magnetLink,
 quality: `${torrent.quality} (${torrent.type.toUpperCase()})`,
 size: torrent.size,
-source: "YTS Engine",
+source: "YTS LT Engine",
 label: `YTS Direct ${torrent.quality}`
 });
 }
@@ -38,7 +38,34 @@ label: `YTS Direct ${torrent.quality}`
 }
 }
 } catch (e) {
-console.log("YTS API Error: " + e.message);
+console.log("YTS LT Failed, trying main domain...");
+}
+// 🚨 2. अगर ऊपर वाला फेल हो, तब मेन डोमेन (yts.mx) पर ट्राई करो
+if (streams.length === 0) {
+try {
+const ytsMainUrl = `https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
+const response = await axios.get(ytsMainUrl, { headers: { 'User-Agent': userAgent }, timeout: 6000 });
+if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
+const movies = response.data.data.movies;
+for (const movie of movies) {
+if (movie.torrents) {
+for (const torrent of movie.torrents) {
+const magnetLink = `magnet:?xt=urn:btih:${torrent.hash}&dn=${encodeURIComponent(movie.title)}&tr=udp://open.demonii.com:1337/announce`;
+streams.push({
+url: magnetLink,
+magnet_url: magnetLink,
+quality: `${torrent.quality} (${torrent.type.toUpperCase()})`,
+size: torrent.size,
+source: "YTS MX Engine",
+label: `YTS Direct ${torrent.quality}`
+});
+}
+}
+}
+}
+} catch (e) {
+console.log("YTS Main Domain also failed: " + e.message);
+}
 }
 if (streams.length === 0) {
 return res.status(404).json({ success: false, message: "No streamable torrents found on any source." });
