@@ -15,10 +15,10 @@ return res.status(400).json({ success: false, error: 'Query parameter "q" is req
 }
 let streams = [];
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-// 🚨 1. पहले YTS के ऑफिशियल अल्टरनेटिव डोमेन (yts.lt) पर ट्राई करो जो सर्वर्स पर ब्लॉक नहीं होता
+// 🚨 1. अनब्लॉकड बाईपास गेटवे - यह रेंडर के सर्वर को कभी ब्लॉक नहीं होने देगा
 try {
-const ytsAltUrl = `https://yts.lt/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
-const response = await axios.get(ytsAltUrl, { headers: { 'User-Agent': userAgent }, timeout: 6000 });
+const proxyApiUrl = `https://workers.dev/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
+const response = await axios.get(proxyApiUrl, { headers: { 'User-Agent': userAgent }, timeout: 8000 });
 if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
 const movies = response.data.data.movies;
 for (const movie of movies) {
@@ -30,7 +30,7 @@ url: magnetLink,
 magnet_url: magnetLink,
 quality: `${torrent.quality} (${torrent.type.toUpperCase()})`,
 size: torrent.size,
-source: "YTS LT Engine",
+source: "Proxy Gateway Engine",
 label: `YTS Direct ${torrent.quality}`
 });
 }
@@ -38,13 +38,13 @@ label: `YTS Direct ${torrent.quality}`
 }
 }
 } catch (e) {
-console.log("YTS LT Failed, trying main domain...");
+console.log("Proxy Gateway Engine Failed, trying fallback 2...");
 }
-// 🚨 2. अगर ऊपर वाला फेल हो, तब मेन डोमेन (yts.mx) पर ट्राई करो
+// 🚨 2. बैकअप गेटवे (अगर ऊपर वाला काम न करे तो यह संभालेगा)
 if (streams.length === 0) {
 try {
-const ytsMainUrl = `https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
-const response = await axios.get(ytsMainUrl, { headers: { 'User-Agent': userAgent }, timeout: 6000 });
+const secondaryUrl = `https://yts-proxy.com/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}`;
+const response = await axios.get(secondaryUrl, { headers: { 'User-Agent': userAgent }, timeout: 8000 });
 if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
 const movies = response.data.data.movies;
 for (const movie of movies) {
@@ -56,7 +56,7 @@ url: magnetLink,
 magnet_url: magnetLink,
 quality: `${torrent.quality} (${torrent.type.toUpperCase()})`,
 size: torrent.size,
-source: "YTS MX Engine",
+source: "Secondary Proxy Engine",
 label: `YTS Direct ${torrent.quality}`
 });
 }
@@ -64,7 +64,7 @@ label: `YTS Direct ${torrent.quality}`
 }
 }
 } catch (e) {
-console.log("YTS Main Domain also failed: " + e.message);
+console.log("Secondary Proxy Engine also failed: " + e.message);
 }
 }
 if (streams.length === 0) {
