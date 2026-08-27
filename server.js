@@ -1,208 +1,85 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
-const https = require('https');
-
 const app = express();
-app.use(express.json());
-
-const httpsAgent = new https.Agent({  
-    rejectUnauthorized: false
-});
-
-// Advanced Stealth Headers simulating real Chrome browser on Windows
-const getStealthHeaders = (targetUrl) => {
-    let host = "www.google.com";
-    try {
-        const parsed = new URL(targetUrl);
-        host = parsed.host;
-    } catch (e) {}
-
-    return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Sec-Ch-Ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'Referer': `https://www.google.com/url?q=https%3A%2F%2F${host}%2F`
-    };
-};
-
-function cleanTitle(title) {
-    if (!title) return "";
-    return title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/gi, '')
-        .trim()
-        .replace(/\s+/g, '+');
-}
-
-function extractVideoLinks(htmlContent) {
-    if (!htmlContent) return [];
-    const regex = /https?:\/\/[^\s"'<>]+?\.(mp4|m3u8|mkv)(\?[^\s"'<>]+)?/gi;
-    const matches = htmlContent.match(regex) || [];
-    return [...new Set(matches)];
-}
-
-async function searchAcrossProviders(query) {
-    const providers = [
-        `https://www.thenetnaija.net/search?t=${query}`,
-        `https://fzmovies.net/search.aspx?q=${query}`,
-        `https://1377x.to/search/${query}/1/`,
-        `https://123moviesfree.net/search/${query}`,
-        `https://downloads-anymovies.co/search?q=${query}`,
-        `https://eztvtorrent.co/search/${query}`
-    ];
-
-    for (const searchUrl of providers) {
-        try {
-            console.log(`Analysing from [${searchUrl}]`);
-            const response = await axios.get(searchUrl, {
-                headers: getStealthHeaders(searchUrl),
-                httpsAgent: httpsAgent,
-                timeout: 4000,
-                validateStatus: function (status) {
-                    return status >= 200 && status < 500;
-                }
-            });
-
-            if (response.status === 403 || response.status === 503) {
-                console.log(`Blocked (Cloudflare/Anti-Bot) on ${searchUrl}`);
-                continue;
-            }
-
-            const html = response.data;
-            const foundLinks = extractVideoLinks(html);
-
-            if (foundLinks.length > 0) {
-                console.log(`Found direct link on ${searchUrl}: ${foundLinks[0]}`);
-                return foundLinks[0];
-            }
-
-            const $ = cheerio.load(html);
-            let postLink = $('a.article-title').attr('href') || 
-                           $('h2 a').attr('href') || 
-                           $('.search-result a').attr('href') || 
-                           $('.detLink').attr('href') ||
-                           $('a.moviename').attr('href');
-
-            if (postLink) {
-                if (!postLink.startsWith('http')) {
-                    const parsedUrl = new URL(searchUrl);
-                    postLink = `${parsedUrl.protocol}//${parsedUrl.host}${postLink}`;
-                }
-
-                console.log(`Deep scraping post: ${postLink}`);
-                const postResp = await axios.get(postLink, {
-                    headers: getStealthHeaders(postLink),
-                    httpsAgent: httpsAgent,
-                    timeout: 4000,
-                    validateStatus: function (status) {
-                        return status >= 200 && status < 400;
-                    }
-                });
-
-                const postLinks = extractVideoLinks(postResp.data);
-                if (postLinks.length > 0) {
-                    console.log(`Found deep video link: ${postLinks[0]}`);
-                    return postLinks[0];
-                }
-            }
-        } catch (err) {
-            console.log(`Failed on ${searchUrl}: ${err.message}`);
-            continue;
-        }
-    }
-
-    return null;
-}
-
-app.get('/extract', async (req, res) => {
-    const rawQuery = req.query.q;
-    if (!rawQuery) {
-        return res.status(400).json({ success: false, error: "Query parameter 'q' is required" });
-    }
-
-    const query = cleanTitle(rawQuery);
-    console.log(`Universal Engine Searching for: ${rawQuery} (Cleaned: ${query})`);
-
-    const streamUrl = await searchAcrossProviders(query);
-
-    if (streamUrl) {
-        return res.json({
-            success: true,
-            streamUrl: streamUrl,
-            headers: {
-                "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                "Referer": "https://www.google.com/"
-            }
-        });
-    } else {
-        return res.json({
-            success: false,
-            streamUrl: "",
-            message: "No stream found across all indexers."
-        });
-    }
-});
-
-app.get('/proxy', async (req, res) => {
-    const videoUrl = req.query.url;
-    if (!videoUrl) {
-        return res.status(400).send("Video URL is required");
-    }
-
-    try {
-        const parsedTargetUrl = new URL(videoUrl);
-        const dynamicOrigin = `${parsedTargetUrl.protocol}//${parsedTargetUrl.host}`;
-
-        const response = await axios({
-            method: 'get',
-            url: videoUrl,
-            httpsAgent: httpsAgent,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                'Referer': `${dynamicOrigin}/`,
-                'Origin': dynamicOrigin,
-                'Range': req.headers.range || 'bytes=0-'
-            },
-            responseType: 'stream',
-            timeout: 30000
-        });
-
-        const safeHeaders = {};
-        const passHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified'];
-        
-        Object.keys(response.headers).forEach(key => {
-            if (passHeaders.includes(key.toLowerCase())) {
-                safeHeaders[key] = response.headers[key];
-            }
-        });
-
-        res.writeHead(response.status, {
-            ...safeHeaders,
-            'Access-Control-Allow-Origin': '*'
-        });
-        
-        response.data.pipe(res);
-    } catch (error) {
-        console.error("Proxy Error:", error.message);
-        if (!res.headersSent) {
-            res.status(500).send("Failed to proxy video stream.");
-        }
-    }
-});
-
 const PORT = process.env.PORT || 3000;
+
+// CORS ओपन करने के लिए ताकि आपकी एंड्रॉइड ऐप इसे बिना एरर के हिट कर सके
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "*");
+    next();
+});
+
+app.get('/', async (req, res) => {
+    const query = req.query.q;
+    if (!query) {
+        return res.status(400).json({ success: false, error: 'Query parameter "q" is required.' });
+    }
+
+    let streams = [];
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+    // 1. SolidTorrents API Integration (यह रेंडर के सर्वर्स पर कभी ब्लॉक नहीं होता)
+    try {
+        const solidApiUrl = `https://solidtorrents.to{encodeURIComponent(query)}&category=all`;
+        const response = await axios.get(solidApiUrl, { headers: { 'User-Agent': userAgent }, timeout: 5000 });
+        
+        if (response.data && response.data.results && response.data.results.length > 0) {
+            for (const item of response.data.results) {
+                if (item.magnet) {
+                    streams.push({
+                        url: item.magnet,
+                        magnet_url: item.magnet,
+                        quality: "HD / Multi-Audio",
+                        size: (item.size / (1024 * 1024 * 1024)).toFixed(2) + " GB",
+                        source: "SolidTorrents Engine",
+                        label: item.title || "High Speed Stream"
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.log("SolidTorrents Engine Failed, trying YTS...");
+    }
+
+    // 2. YTS Official API Fallback
+    if (streams.length === 0) {
+        try {
+            const ytsUrl = `https://yts.mx{encodeURIComponent(query)}`;
+            const response = await axios.get(ytsUrl, { headers: { 'User-Agent': userAgent }, timeout: 5000 });
+            
+            if (response.data && response.data.status === 'ok' && response.data.data.movie_count > 0) {
+                const movies = response.data.data.movies;
+                for (const movie of movies) {
+                    if (movie.torrents) {
+                        for (const torrent of movie.torrents) {
+                            const magnetLink = `magnet:?xt=urn:btih:${torrent.hash}&dn=${encodeURIComponent(movie.title)}&tr=udp://://demonii.com`;
+                            streams.push({
+                                url: magnetLink,
+                                magnet_url: magnetLink,
+                                quality: `${torrent.quality} (${torrent.type.toUpperCase()})`,
+                                size: torrent.size,
+                                source: "YTS Official API",
+                                label: `YTS Direct ${torrent.quality}`
+							});
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log("YTS Fallback Failed too...");
+        }
+    }
+
+    // फाइनल रिस्पॉन्स डिलीवरी
+    if (streams.length === 0) {
+        return res.status(404).json({ success: false, message: "No streamable torrents found on any source." });
+    }
+
+    return res.json({ success: true, query, total_streams: streams.length, streams });
+});
+
 app.listen(PORT, () => {
-    console.log(`MovieBox Ultimate Extractor Server running on port ${PORT}`);
+    console.log(`Movie Scraper Server running on port ${PORT}`);
 });
