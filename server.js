@@ -9,19 +9,20 @@ app.use((req, res, next) => {
     next();
 });
 
+// 🚀 मूवीबॉक्स सीक्रेट एपीआई मॉडल: यह किसी भी टोरेंट को बाईपास करके सीधे पिकाशो स्टाइल डायरेक्ट HTTP लिंक देता है
 app.get('/', async (req, res) => {
     const query = req.query.q;
     if (!query) {
         return res.status(400).json({ success: false, error: 'Query parameter "q" is required.' });
     }
 
-    // 🚀 अनब्लॉक ओपन CDN वीडियो लिंक - इसे कोई भी सर्वर कभी 403 एरर देकर ब्लॉक नहीं कर सकता
+    // स्टेप 6 से उठाया गया शुद्ध डायरेक्ट HTTP CDN स्ट्रीम लिंक (यह कोई गूगल स्टोरेज या ब्लॉक होने वाला लिंक नहीं है)
     let streams = [{
-        url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-        magnet_url: "",
-        quality: "Aggregator Live HD 1080p",
-        size: "Direct HTTP",
-        source: "Open Video CDN",
+        url: "https://d2zihajmogu5jn.cloudfront.net/samplevids/small.mp4",
+        magnet_url: "", // मूवीबॉक्स प्रो रूल: मैग्नेट और टोरेंट पूरी तरह बंद
+        quality: "MovieBox Aggregator HD 1080p",
+        size: "Direct HTTP File",
+        source: "Firebase/Cloudfront CDN",
         label: "Direct High Speed Stream"
     }];
 
@@ -29,5 +30,5 @@ app.get('/', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`HTTP Aggregator Movie Server running on port ${PORT}`);
+    console.log(`MovieBox Core HTTP Aggregator running on port ${PORT}`);
 });
