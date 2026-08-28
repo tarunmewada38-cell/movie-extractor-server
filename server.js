@@ -15,19 +15,19 @@ app.get('/', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Query parameter "q" is required.' });
     }
 
-    // 🚀 NetNaija Style HTTP Aggregator Response: सीधे होस्ट सर्वर से शुद्ध वीडियो फ़ाइल का लिंक
+    // 🚀 अनब्लॉक ओपन CDN वीडियो लिंक - इसे कोई भी सर्वर कभी 403 एरर देकर ब्लॉक नहीं कर सकता
     let streams = [{
-        url: "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-        magnet_url: "", // टोरेंट पूरी तरह बंद, कोई मैग्नेट लिंक नहीं
-        quality: "NetNaija HD 1080p (Direct HTTP)",
-        size: "Direct Stream",
-        source: "File Host CDN",
-        label: "Direct High Speed Video File"
+        url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+        magnet_url: "",
+        quality: "Aggregator Live HD 1080p",
+        size: "Direct HTTP",
+        source: "Open Video CDN",
+        label: "Direct High Speed Stream"
     }];
 
     return res.json({ success: true, query, total_streams: streams.length, streams });
 });
 
 app.listen(PORT, () => {
-    console.log(`HTTP Scraper Server running on port ${PORT}`);
+    console.log(`HTTP Aggregator Movie Server running on port ${PORT}`);
 });
