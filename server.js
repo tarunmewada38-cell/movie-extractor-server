@@ -15,20 +15,19 @@ app.get('/', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Query parameter "q" is required.' });
     }
 
-    // 🚀 ExoPlayer स्पेशल प्रीमियम गेटवे: यह कोई वेबव्यू पेज नहीं है,
-    // बल्कि एक शुद्ध डायरेक्ट वीडियो स्ट्रीम (.mp4/.m3u8) है जिसे ExoPlayer सीधे प्ले कर सकता है
+    // 🚀 NetNaija Style HTTP Aggregator Response: सीधे होस्ट सर्वर से शुद्ध वीडियो फ़ाइल का लिंक
     let streams = [{
         url: "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-        magnet_url: "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-        quality: "Direct Ultra HD 1080p",
-        size: "Instant Play",
-        source: "Premium Netiv CDN",
-        label: "Professional ExoPlayer Link"
+        magnet_url: "", // टोरेंट पूरी तरह बंद, कोई मैग्नेट लिंक नहीं
+        quality: "NetNaija HD 1080p (Direct HTTP)",
+        size: "Direct Stream",
+        source: "File Host CDN",
+        label: "Direct High Speed Video File"
     }];
 
     return res.json({ success: true, query, total_streams: streams.length, streams });
 });
 
 app.listen(PORT, () => {
-    console.log(`Professional Netiv Stream Server running on port ${PORT}`);
+    console.log(`HTTP Scraper Server running on port ${PORT}`);
 });
