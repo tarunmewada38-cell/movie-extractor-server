@@ -20,8 +20,8 @@ app.get('/', async (req, res) => {
     }
 
     try {
-        // ✅ आपके निर्देशानुसार अपडेटेड हिस्सा
-        const cleanTitle = query.split(':')[0].trim();
+        // ✅ यहाँ decodeURIComponent लगाकर %3A को कोलन में बदल दिया गया है
+        const cleanTitle = decodeURIComponent(query).split(':')[0].trim();
         console.log("AI Engine NG: Searching for -> " + cleanTitle);
 
         // ✅ सही सर्च रूट पाथ (बेस यूआरएल + /search?q= + एन्कोडेड टाइटल)
