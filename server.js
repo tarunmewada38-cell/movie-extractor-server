@@ -20,20 +20,17 @@ app.get('/', async (req, res) => {
     }
 
     try {
-        // ✅ सही तरीका: .split(':') के बाद [0] लगाकर ही .trim() करना ताकि ऐरे क्रैश न हो
+        // ✅ आपके निर्देशानुसार अपडेटेड हिस्सा
         const cleanTitle = query.split(':')[0].trim();
-        console.log(`AI Engine NG: Searching original links for -> ${cleanTitle}`);
+        console.log("AI Engine NG: Searching for -> " + cleanTitle);
 
-        // ✅ सही सर्च रूट पाथ
-        const searchUrl = `https://www.thenetnaija.com.ng/search?q=${encodeURIComponent(cleanTitle)}`;
-        const searchResponse = await axios.get(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        // ✅ सही सर्च रूट पाथ (बेस यूआरएल + /search?q= + एन्कोडेड टाइटल)
+        const searchUrl = "https://www.thenetnaija.com.ng/search?q=" + encodeURIComponent(cleanTitle);
+        const searchResponse = await axios.get(searchUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
         const $ = cheerio.load(searchResponse.data);
 
-        // पहली ओरिजनल मूवी का पेज लिंक ढूंढना
-        let moviePageLink = $('.info h2 a').first().attr('href');
-        if (!moviePageLink) {
-            moviePageLink = $('a[href*="/videos/"]').first().attr('href');
-        }
+        // ✅ पहली ओरिजनल मूवी का पेज लिंक ढूंढना (कॉम्पैक्ट और सुरक्षित तरीका)
+        let moviePageLink = $(".info h2 a").first().attr("href") || $("a[href*='/videos/']").first().attr("href");
 
         if (!moviePageLink) {
             throw new Error("Movie not found in new live .NG database");
