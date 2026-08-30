@@ -12,7 +12,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// 🚀 असली मूवी एक्स्ट्रेक्टर इंजन: यह लाइव मूवी का नाम सर्च करके उसका असली .mp4 डाउनलोड लिंक लाता है
+// 🚀 न्यू .NG डोमेन एक्स्ट्रेक्टर इंजन: यह लाइव मूवी का नाम सर्च करके उसका असली .mp4 डाउनलोड लिंक लाता है
 app.get('/', async (req, res) => {
     const query = req.query.q;
     if (!query) {
@@ -20,32 +20,37 @@ app.get('/', async (req, res) => {
     }
 
     try {
-        console.log(`AI Engine: Searching original links for -> ${query}`);
+        // स्मार्ट क्लीनर: "Spider-Man: Brand New Day" में से कोलन हटाकर सिर्फ "Spider-Man" करेगा
+        const cleanTitle = query.split(':')[0].trim();
+        console.log(`AI Engine NG: Searching original links for -> ${cleanTitle}`);
 
-        // स्टेप 1: नेटनैजा के सर्च इंजन को लाइव हिट मारना
-        const searchUrl = `https://www.thenetnaija.com/search?q=${encodeURIComponent(query)}`;
+        // स्टेप 1: आपके नए .com.ng वाले वर्किंग सर्च इंजन को लाइव हिट मारना
+        const searchUrl = `https://www.thenetnaija.com.ng/search?q=${encodeURIComponent(cleanTitle)}`;
         const searchResponse = await axios.get(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const $ = cheerio.load(searchResponse.data);
 
-        // पहली मूवी का पेज लिंक निकालना
-        const moviePageLink = $('.video-files .info h2 a').first().attr('href');
+        // पहली ओरिजनल मूवी का पेज लिंक ढूंढना
+        let moviePageLink = $('.info h2 a').first().attr('href');
         if (!moviePageLink) {
-            throw new Error("Movie not found in live database");
+            moviePageLink = $('a[href*="/videos/"]').first().attr('href');
         }
 
-        // स्टेप 2: मूवी के असली डाउनलोड पेज पर जाना
+        if (!moviePageLink) {
+            throw new Error("Movie not found in new live .NG database");
+        }
+
+        // स्टेप 2: मूवी के असली डायरेक्ट डाउनलोड पेज पर जाना
         const downloadPageResponse = await axios.get(moviePageLink, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const $download = cheerio.load(downloadPageResponse.data);
 
-        // असली डायरेक्ट .mp4 वीडियो का यूआरएल ढूंढना
+        // नए डोमेन का असली डायरेक्ट .mp4 वीडियो का यूआरएल ढूंढना
         let realMovieUrl = $download('a.btn.download-btn').first().attr('href');
         if (!realMovieUrl) {
-            // बैकअप गेटवे: अगर पहला बटन न मिले तो दूसरा ट्राई करना
-            realMovieUrl = $download('.download-links a').first().attr('href');
+            realMovieUrl = $download('a[href*="/download/"]').first().attr('href');
         }
 
         if (!realMovieUrl) {
-            throw new Error("Direct download link is missing");
+            throw new Error("Direct download link is missing on this page");
         }
 
         // अगर लिंक मिल गया, तो उसे शुद्ध https में बदलना
@@ -56,21 +61,20 @@ app.get('/', async (req, res) => {
         let streams = [{
             url: realMovieUrl,
             magnet_url: "",
-            quality: "Original HD Premium",
+            quality: "Original NG HD Premium",
             size: "Source File",
-            source: "Live Scraper Engine",
-            label: `${query} Original Full Movie`
+            source: "Live .NG Scraper Engine",
+            label: `${cleanTitle} Original Full Movie`
         }];
 
-        return res.json({ success: true, query, total_streams: streams.length, streams });
+        return res.json({ success: true, query: cleanTitle, total_streams: streams.length, streams });
 
     } catch (error) {
-        console.error("Scraper Error: " + error.message);
-        // 🛡️ सेफ्टी फॉलबैक: अगर स्क्रैपिंग फेल हो जाए, तो ऐप क्रैश होने से बचाने के लिए JSON एरर भेजना
-        return res.status(500).json({ success: false, error: "Could not extract original movie link at this moment." });
+        console.error("Scraper NG Error: " + error.message);
+        return res.status(500).json({ success: false, error: "Could not extract original movie link from .NG server at this moment." });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`MovieBox Live Original Extractor running on port ${PORT}`);
+    console.log(`MovieBox Live Original .NG Extractor running on port ${PORT}`);
 });
