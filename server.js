@@ -20,7 +20,7 @@ app.get('/', async (req, res) => {
     }
 
     try {
-        // ✅ यहाँ decodeURIComponent लगाकर %3A को कोलन में बदल दिया गया है
+        // ✅ decodeURIComponent लगाकर %3A को कोलन में बदला गया है
         const cleanTitle = decodeURIComponent(query).split(':')[0].trim();
         console.log("AI Engine NG: Searching for -> " + cleanTitle);
 
@@ -29,8 +29,14 @@ app.get('/', async (req, res) => {
         const searchResponse = await axios.get(searchUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
         const $ = cheerio.load(searchResponse.data);
 
-        // ✅ पहली ओरिजनल मूवी का पेज लिंक ढूंढना (कॉम्पैक्ट और सुरक्षित तरीका)
-        let moviePageLink = $(".info h2 a").first().attr("href") || $("a[href*='/videos/']").first().attr("href");
+        // ✅ यहाँ 7 टुकड़ों वाला नया ग्लोबल सेलेक्टर लॉजिक लगा दिया गया है
+        let moviePageLink = "";
+        $('a').each((index, element) => {
+            const href = $(element).attr('href');
+            if (href && (href.includes('/videos/') || href.includes('/movie/'))) {
+                if (!moviePageLink) { moviePageLink = href; }
+            }
+        });
 
         if (!moviePageLink) {
             throw new Error("Movie not found in new live .NG database");
