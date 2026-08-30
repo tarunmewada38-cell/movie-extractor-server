@@ -24,8 +24,9 @@ app.get('/', async (req, res) => {
         const cleanTitle = decodeURIComponent(query).split(':')[0].split('[')[0].trim();
         console.log(`AI FZ Scraper: Searching direct downloads for -> ${cleanTitle}`);
 
-        // FZMovies के एक्टिव सर्च गेटवे को हिट करना
-        const searchUrl = `https://fzmovies.cms?search=${encodeURIComponent(cleanTitle)}&Search=Search`;
+        // ✅ यहाँ www. और सही सर्च पाथ (/csearch.php?searchname=) को पूरी तरह सुधार कर जोड़ दिया गया है
+        const searchUrl = "https://www.fzmovies.net/csearch.php?searchname=" + encodeURIComponent(cleanTitle) + "&Search=Search";
+        
         const searchResponse = await axios.get(searchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36' }
         });
@@ -37,7 +38,7 @@ app.get('/', async (req, res) => {
             throw new Error("Movie not found in FZ Database");
         }
         if (!mainLink.startsWith('http')) {
-            mainLink = 'https://fzmovies.cms' + mainLink;
+            mainLink = 'https://www.fzmovies.net' + mainLink;
         }
 
         // डायरेक्ट डाउनलोड सर्वर गेटवे को निकालना
@@ -48,7 +49,7 @@ app.get('/', async (req, res) => {
         let downloadLink = $movie('a[href*="download"]').first().attr('href') || $movie('#downloadlink').attr('href');
         
         if (!downloadLink) {
-            // 🛡️ सुरक्षित फॉलबैक: यदि लिंक न मिले तो एक वर्किंग पब्लिक सैंपल वीडियो यूआरएल देना ताकि ऐप क्रैश न हो
+            // 🛡️ सुरक्षित फॉलबैक: वर्किंग पब्लिक सैंपल वीडियो यूआरएल ताकि ऐप क्रैश न हो
             downloadLink = "https://www.w3schools.com/html/mov_bbb.mp4";
         }
 
@@ -70,7 +71,7 @@ app.get('/', async (req, res) => {
     } catch (error) {
         console.error("FZ Scraper Failed: " + error.message);
         
-        // 🛡️ कैच ब्लॉक फॉलबैक: यहाँ भी आधा-अधूरा डोमेन हटाने के बाद सुरक्षित सैंपल वीडियो लिंक रख दिया है
+        // 🛡️ कैच ब्लॉक फॉलबैक: सुरक्षित और चालू सैंपल वीडियो लिंक
         let fallbackStreams = [{
             url: "https://www.w3schools.com/html/mov_bbb.mp4",
             magnet_url: "",
