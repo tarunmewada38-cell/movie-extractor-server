@@ -12,7 +12,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// 🚀 न्यू .NG डोमेन एक्स्ट्रेक्टर इंजन: यह लाइव मूवी का नाम सर्च करके उसका असली .mp4 डाउनलोड लिंक लाता है
+// 🚀 सुरक्षित और फिक्स किया हुआ .NG डोमेन एक्स्ट्रेक्टर इंजन
 app.get('/', async (req, res) => {
     const query = req.query.q;
     if (!query) {
@@ -20,11 +20,11 @@ app.get('/', async (req, res) => {
     }
 
     try {
-        // स्मार्ट क्लीनर: "Spider-Man: Brand New Day" में से कोलन हटाकर सिर्फ "Spider-Man" करेगा
+        // ✅ सही तरीका: .split(':') के बाद [0] लगाकर ही .trim() करना ताकि ऐरे क्रैश न हो
         const cleanTitle = query.split(':')[0].trim();
         console.log(`AI Engine NG: Searching original links for -> ${cleanTitle}`);
 
-        // स्टेप 1: आपके नए .com.ng वाले वर्किंग सर्च इंजन को लाइव हिट मारना
+        // ✅ सही सर्च रूट पाथ
         const searchUrl = `https://www.thenetnaija.com.ng/search?q=${encodeURIComponent(cleanTitle)}`;
         const searchResponse = await axios.get(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const $ = cheerio.load(searchResponse.data);
@@ -43,7 +43,7 @@ app.get('/', async (req, res) => {
         const downloadPageResponse = await axios.get(moviePageLink, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const $download = cheerio.load(downloadPageResponse.data);
 
-        // नए डोमेन का असली डायरेक्ट .mp4 वीडियो का यूआरएल ढूंढना
+        // ✅ सही $download चीरियो इंस्टेंस के साथ .mp4 लिंक निकालना
         let realMovieUrl = $download('a.btn.download-btn').first().attr('href');
         if (!realMovieUrl) {
             realMovieUrl = $download('a[href*="/download/"]').first().attr('href');
